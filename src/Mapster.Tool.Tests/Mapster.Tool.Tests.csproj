@@ -8,6 +8,10 @@
         <IsPackable>false</IsPackable>
     </PropertyGroup>
 
+    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+      <DocumentationFile>bin\Debug\Mapster.Tool.Tests.xml</DocumentationFile>
+    </PropertyGroup>
+
     <ItemGroup>
         <PackageReference Include="FluentAssertions" Version="6.9.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.3.2" />

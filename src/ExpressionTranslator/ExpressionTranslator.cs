@@ -1193,8 +1193,13 @@ namespace ExpressionDebugger
         private int _inlineCount;
 
         public Expression VisitLambda(LambdaExpression node, LambdaType type, string? methodName = null,
-            bool isInternal = false)
+            bool isInternal = false, bool hasDoc = false)
         {
+            if (hasDoc)
+            {
+                Write("/// <inheritdoc />");
+            }
+            
             if (type == LambdaType.PrivateLambda || type == LambdaType.PublicLambda)
             {
                 _inlineCount++;

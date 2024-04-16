@@ -5,6 +5,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
+using System.Xml.Linq;
 using CommandLine;
 using ExpressionDebugger;
 using Mapster.Models;
@@ -61,6 +62,12 @@ namespace Mapster.Tool
         private static void GenerateMappers(MapperOptions opt)
         {
             var assembly = Assembly.LoadFrom(Path.GetFullPath(opt.Assembly));
+            XDocument? xmlDoc = null;
+            if (opt.DocumentationPath != null)
+            {
+                xmlDoc = XDocument.Load(Path.GetFullPath(opt.DocumentationPath));
+            }
+
             var config = TypeAdapterConfig.GlobalSettings;
             config.SelfContainedCodeGeneration = true;
             config.Scan(assembly);
@@ -110,8 +117,9 @@ namespace Mapster.Tool
                         var funcArgs = propArgs.GetGenericArguments();
                         var tuple = new TypeTuple(funcArgs[0], funcArgs[1]);
                         var expr = config.CreateMapExpression(tuple, MapType.Projection);
+                        var hasDoc = HasDocumentation(propArgs, xmlDoc);
                         translator.VisitLambda(expr, ExpressionTranslator.LambdaType.PublicLambda,
-                            prop.Name);
+                            prop.Name, hasDoc: hasDoc);
                     }
                 }
 
@@ -124,13 +132,15 @@ namespace Mapster.Tool
                         if (method.ReturnType == typeof(void))
                             continue;
                         var methodArgs = method.GetParameters();
-                        if (methodArgs.Length < 1 || methodArgs.Length > 2)
+                        if (methodArgs.Length is < 1 or > 2)
                             continue;
                         var tuple = new TypeTuple(methodArgs[0].ParameterType, method.ReturnType);
                         var expr = config.CreateMapExpression(tuple,
                             methodArgs.Length == 1 ? MapType.Map : MapType.MapToTarget);
+                        
+                        var hasDoc = HasDocumentation(method, xmlDoc);
                         translator.VisitLambda(expr, ExpressionTranslator.LambdaType.PublicMethod,
-                            method.Name);
+                            method.Name, hasDoc: hasDoc);
                     }
                 }
 
@@ -140,11 +150,20 @@ namespace Mapster.Tool
                 WriteFile(code, path);
             }
         }
+        
+        private static bool HasDocumentation(MemberInfo member, XDocument? xmlDoc)
+        {
+            if (xmlDoc == null) return false;
+            var xmlPath = $"{member.MemberType.ToString().ToLower()}:{member.DeclaringType.FullName}.{member.Name}";
+            var query = xmlDoc.Descendants("member")
+                .FirstOrDefault(m => m.Attribute("name").Value.Equals(xmlPath));
+            return query != null;
+        }
 
         private static string GetImplName(string name)
         {
             if (name.Length >= 2 && name[0] == 'I' && name[1] >= 'A' && name[1] <= 'Z')
-                return name.Substring(1);
+                return name[1..];
             return name + "Impl";
         }
 
@@ -183,7 +202,7 @@ namespace Mapster.Tool
             var nilCtxAttr = type.GetCustomAttributesData()
                 .FirstOrDefault(it => it.AttributeType.Name == "NullableContextAttribute");
             return nilCtxAttr?.ConstructorArguments.Count == 1 && nilCtxAttr.ConstructorArguments[0].Value is byte b
-                ? (byte?) b
+                ? b
                 : null;
         }
         private static void CreateModel(ModelOptions opt, Type type, AdaptAttributeBuilder builder)
@@ -263,8 +282,8 @@ namespace Mapster.Tool
                     Name = setting?.TargetPropertyName ?? adaptMember?.Name ?? member.Name,
                     Type = isNullable ? propType.MakeNullable() : propType,
                     IsReadOnly = isReadOnly,
-                    NullableContext = nilAttrArg is byte b ? (byte?)b : null,
-                    Nullable = nilAttrArg is byte[] bytes ? bytes : null,
+                    NullableContext = nilAttrArg is byte b ? b : null,
+                    Nullable = nilAttrArg as byte[],
                 });
             }
 
